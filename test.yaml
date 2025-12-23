@@ -1,0 +1,65 @@
+﻿---
+- name: Désinstallation de l'agent OCS sur les serveurs cibles
+  hosts: all                
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Noms de packages selon la famille OS (à adapter si besoin)
+    ocs_packages:
+      Debian:
+        - ocsinventory-agent
+      Ubuntu:
+        - ocsinventory-agent
+      RedHat:
+        - ocsinventory-agent
+        - ocsinventory
+      CentOS:
+        - ocsinventory-agent
+        - ocsinventory
+
+    # Noms possibles de services OCS
+    ocs_services:
+      - ocsinventory-agent
+      - ocsinventory
+
+    # Répertoires/fichiers à supprimer (à ajuster selon ton infra)
+    ocs_paths_to_remove:
+      - "/etc/ocsinventory"
+      - "/var/lib/ocsinventory"
+      - "/var/log/ocsinventory"
+      - "/var/ocsinventory"
+  tasks:
+
+    - name: Vérifier si le gestionnaire de paquets est dispo
+      ansible.builtin.debug:
+        msg: "Gestionnaire de paquets détecté : {{ ansible_pkg_mgr }}"
+
+    - name: Récupérer les facts sur les packages
+      ansible.builtin.package_facts:
+        manager: auto
+
+    - name: Désinstaller les packages OCS s'ils sont présents
+      ansible.builtin.package:
+        name: "{{ item }}"
+        state: absent
+      loop: "{{ ocs_packages[ansible_facts.os_family] | default([]) }}"
+      when: item in ansible_facts.packages
+      ignore_errors: yes
+
+    - name: Supprimer les chemins OCS (fichiers/répertoires)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ ocs_paths_to_remove }}"
+
+    - name: Supprimer une éventuelle tâche cron OCS (fichier dans /etc/cron.d)
+      ansible.builtin.file:
+        path: "/etc/cron.d/ocsinventory-agent"
+        state: absent
+
+    - name: Supprimer une éventuelle entrée cron OCS dans la crontab de root
+      ansible.builtin.cron:
+        name: "ocsinventory-agent"
+        user: "root"
+        state: absent
